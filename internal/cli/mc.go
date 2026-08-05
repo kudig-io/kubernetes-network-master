@@ -4,12 +4,17 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 
+	"github.com/kudig-io/knm-cli/internal/kube"
 	"github.com/kudig-io/knm-cli/internal/output"
+	"github.com/kudig-io/knm-cli/internal/trace"
 )
 
 func newMCCmd(g *GlobalFlags) *cobra.Command {
@@ -144,9 +149,10 @@ func newMCPolicySyncCmd(g *GlobalFlags) *cobra.Command {
 }
 
 func newMCConnectivityCmd(g *GlobalFlags) *cobra.Command {
+	var activeConn bool
 	cmd := &cobra.Command{
 		Use:   "connectivity",
-		Short: "Hybrid-cloud MTU / route / connectivity self-check",
+		Short: "Hybrid-cloud MTU / route / connectivity self-check (active probe)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := context.Background()
 			cs, err := g.factory.Clientset()
@@ -158,8 +164,14 @@ func newMCConnectivityCmd(g *GlobalFlags) *cobra.Command {
 				return err
 			}
 			t := &output.Table{
-				Title:   "hybrid-cloud connectivity baseline",
-				Headers: []string{"NODE", "INTERNAL IP", "REGION", "PODCIDR", "CHECK"},
+				Title:   "hybrid-cloud connectivity",
+				Headers: []string{"NODE", "INTERNAL IP", "REGION", "PODCIDR", "MTU", "STATUS"},
+			}
+			// Find a representative pod to run probes from (any running pod).
+			probeNS, probePod, haveProbe := findRepresentativePod(ctx, cs)
+			var exec *mcExecClient
+			if activeConn && haveProbe {
+				exec = &mcExecClient{inner: kube.NewRemoteExecutor(g.factory)}
 			}
 			for _, n := range nodes.Items {
 				ip := nodeInternalIP(n)
@@ -168,19 +180,90 @@ func newMCConnectivityCmd(g *GlobalFlags) *cobra.Command {
 				if len(n.Spec.PodCIDRs) > 0 {
 					cidr = n.Spec.PodCIDRs[0]
 				}
+				mtu, status := "—", "baseline"
+				if activeConn {
+					if !haveProbe {
+						mtu, status = "—", "no probe pod"
+					} else if ip == "" {
+						mtu, status = "—", "no node IP"
+					} else if exec != nil {
+						m, s, ok := probeNodeMTU(ctx, *exec, probeNS, probePod, ip)
+						if ok {
+							mtu, status = m, s
+						} else {
+							mtu, status = "—", s
+						}
+					}
+				}
 				t.Rows = append(t.Rows, output.Row{
 					"NODE":        {Value: n.Name},
 					"INTERNAL IP": {Value: ip},
 					"REGION":      {Value: region},
 					"PODCIDR":     {Value: cidr},
-					"CHECK":       {Value: "baseline-collected"},
+					"MTU":         {Value: mtu},
+					"STATUS":      {Value: status},
 				})
 			}
-			output.NYI(t, "active MTU probe (df-ping), route symmetry check, and on-prem↔cloud VPC reachability")
+			if !activeConn {
+				output.Note(t, "ℹ baseline only; re-run with --active to df-ping each node's IP from a probe pod")
+			} else {
+				output.Note(t, "✓ active MTU probe from %s/%s; route-symmetry / VPC-reachability checks are roadmap", probeNS, probePod)
+			}
 			return g.render(t)
 		},
 	}
+	cmd.Flags().BoolVar(&activeConn, "active", false, "actively df-ping each node IP from a probe pod (needs pods/exec)")
 	return cmd
+}
+
+// findRepresentativePod returns any Running pod to exec probes from. Prefers
+// kube-system, then the default namespace.
+func findRepresentativePod(ctx context.Context, cs mcClientset) (ns, pod string, ok bool) {
+	for _, cand := range []string{"kube-system", "default"} {
+		pods, err := cs.CoreV1().Pods(cand).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			continue
+		}
+		for _, p := range pods.Items {
+			if p.Status.Phase == corev1.PodRunning && p.Status.PodIP != "" {
+				return p.Namespace, p.Name, true
+			}
+		}
+	}
+	return "", "", false
+}
+
+// mcClientset is the subset mc connectivity needs (kept local to avoid
+// pulling kubernetes.Interface into the file-wide type).
+type mcClientset = kubernetes.Interface
+
+// mcExecClient adapts kube.RemoteExecutor for the MTU probe.
+type mcExecClient struct{ inner mcExecer }
+type mcExecer interface {
+	Run(ctx context.Context, namespace, pod string, cmd []string, timeout time.Duration) (string, string, int, error)
+}
+
+func (m mcExecClient) Run(ctx context.Context, ns, pod string, cmd []string, timeout time.Duration) (string, string, int, error) {
+	return m.inner.Run(ctx, ns, pod, cmd, timeout)
+}
+
+// probeNodeMTU runs the trace MTU probe against a node IP and returns
+// (mtuString, statusString, ok).
+func probeNodeMTU(ctx context.Context, exec mcExecClient, ns, pod, nodeIP string) (string, string, bool) {
+	if exec.inner == nil {
+		return "", "no exec", false
+	}
+	// Reuse the trace package's MTU probe script builder via a local copy.
+	cmd := trace.MTUProbeCmd(nodeIP)
+	out, _, code, err := exec.Run(ctx, ns, pod, cmd, 12*time.Second)
+	if err != nil {
+		return "", "exec error", false
+	}
+	out = strings.TrimSpace(out)
+	if code != 0 || out == "" || out == "0" {
+		return "", fmt.Sprintf("probe exit %d", code), false
+	}
+	return out, "probed", true
 }
 
 func nodeInternalIP(n corev1.Node) string {

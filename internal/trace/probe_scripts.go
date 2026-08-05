@@ -93,6 +93,20 @@ exit 3
 	return []string{"sh", "-c", script, "rules", clusterIP}
 }
 
+// MTUProbeCmd builds a shell command that performs a path-MTU discovery by
+// binary-searching the DF-ping payload size. It starts at 1472 (typical for a
+// 1500-byte link) and halves until a "do not fragment" ping succeeds, then
+// reports the largest succeeding payload and the implied path MTU.
+//
+// dst IP is $1. Tries `ping -M do -s N` (Linux iputils), then `ping -D -s N`
+// (busybox, no -M). Exit 0 with the number on stdout; exit 1 if no ping at
+// all; exit 3 if the link fragments at every tested size (path-MTU < 28).
+//
+// Exported so other commands (e.g. knm mc connectivity) can reuse it.
+func MTUProbeCmd(dst string) []string {
+	return mtuProbeCmd(dst)
+}
+
 // mtuProbeCmd builds a shell command that performs a path-MTU discovery by
 // binary-searching the DF-ping payload size. It starts at 1472 (typical for a
 // 1500-byte link) and halves until a "do not fragment" ping succeeds, then

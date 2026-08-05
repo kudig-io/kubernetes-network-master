@@ -73,7 +73,12 @@ func TestParseProbeCounts(t *testing.T) {
 }
 
 // fakeExec for drift probe
-type fakeExec struct{ out string; code int; err error }
+type fakeExec struct {
+	out  string
+	code int
+	err  error
+}
+
 func (f *fakeExec) Run(_ context.Context, _, _ string, _ []string, _ time.Duration) (string, string, int, error) {
 	return f.out, "", f.code, f.err
 }
@@ -98,5 +103,6 @@ func TestProbeNode_ExecError(t *testing.T) {
 }
 
 type errFooType struct{}
+
 func (errFooType) Error() string { return "boom" }
 func errFoo() error              { return errFooType{} }

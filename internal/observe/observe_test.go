@@ -100,7 +100,7 @@ func TestBuildReachabilityBaseline(t *testing.T) {
 func TestFilterNetworkEvents(t *testing.T) {
 	events := []corev1.Event{
 		{Reason: "FailedScheduling", Message: "0/3 nodes are available: network not ready", Type: "Warning"},
-		{Reason: "Pulled", Message: "image pulled", Type: "Normal"}, // not network
+		{Reason: "Pulled", Message: "image pulled", Type: "Normal"},                        // not network
 		{Reason: "SomeOther", Message: "connection refused from 1.2.3.4", Type: "Warning"}, // keyword match
 	}
 	rows := FilterNetworkEvents(events)

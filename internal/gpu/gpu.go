@@ -16,7 +16,7 @@ import (
 
 // NCCLLine is one parsed NCCL-test measurement (avg latency + algo bandwidth).
 type NCCLLine struct {
-	Size       string // message size, e.g. "1B", "8M"
+	Size       string  // message size, e.g. "1B", "8M"
 	AvgLatency float64 // microseconds
 	AlgoBW     float64 // GB/s
 	Line       int
@@ -122,10 +122,10 @@ func parseNCCLFields(fields []string, lineNo int) (NCCLLine, bool) {
 
 // QoSState describes a node's RDMA QoS posture, derived from annotations.
 type QoSState struct {
-	Node        string
-	Configured  bool   // any known QoS annotation/device-class present
-	Priority    string // e.g. "P1" when RDMA prioritized
-	Details     string
+	Node       string
+	Configured bool   // any known QoS annotation/device-class present
+	Priority   string // e.g. "P1" when RDMA prioritized
+	Details    string
 }
 
 // known QoS annotation keys (Multus / SR-IOV / RoCE device plugins).

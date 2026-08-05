@@ -49,13 +49,15 @@ crashing. This keeps the binary buildable and runnable on macOS / dev laptops.
 
 For each eBPF command, the fallback path remains the "still useful" answer:
 
-| Command | Full eBPF path | Fallback (current) |
+| Command | Full eBPF path | Fallback (current — all now produce real signal) |
 |---|---|---|
-| `observe flows` | live per-Pod TCP flows | static service map from API |
-| `observe events` | streamed loss/retransmit | empty + roadmap note |
-| `security baseline` | learned peer baseline | per-Pod metadata table |
-| `policy generate` | least-privilege from observed flows | default-deny template |
-| `gpu analyze` | RDMA NIC + NCCL stats | empty + roadmap note |
+| `observe flows` | live per-Pod TCP flows | API-level service map (Services + ports) |
+| `observe events` | streamed loss/retransmit | network-relevant Kubernetes Events (filtered by reason + keyword) |
+| `security baseline` | learned peer baseline | reachability baseline: which Services expose each Pod (from EndpointSlice) |
+| `policy generate` | least-privilege from observed flows | default-deny template + `--from-flows` synthesis from a file |
+| `gpu analyze` | RDMA NIC + NCCL stats | nccl-test log parsing (`-f`) — ranks slow AllReduce links |
 
 The contract: a command **never** silently does nothing. It either produces
 real output or a clear `ℹ not yet implemented:` / degrade note explaining why.
+The fallbacks above are no longer empty — each gives a useful, non-eBPF signal
+so the tool is valuable today even before the libbpf backend lands.

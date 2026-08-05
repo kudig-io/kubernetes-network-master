@@ -44,11 +44,10 @@ func TestDeriveQoS_Configured(t *testing.T) {
 	node := corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{Name: "gpu-node-1",
 			Annotations: map[string]string{
-				"rdma.qos": "p1,p2",
+				"rdma.qos":                    "p1,p2",
 				"k8s.v1.cni.cncf.io/networks": "cx5-rdma",
 			}},
-		Status: corev1.NodeStatus{Capacity: corev1.ResourceList{"nvidia.com/gpu": {}},
-		},
+		Status: corev1.NodeStatus{Capacity: corev1.ResourceList{"nvidia.com/gpu": {}}},
 	}
 	s := DeriveQoS(node)
 	if !s.Configured {

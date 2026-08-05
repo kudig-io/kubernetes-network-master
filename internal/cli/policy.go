@@ -45,8 +45,9 @@ func newPolicyCheckCmd(g *GlobalFlags) *cobra.Command {
 				return err
 			}
 			ns, _ := g.factory.Namespace(false)
-			name := args[0]
-			pod, err := cs.CoreV1().Pods(ns).Get(ctx, name, metav1.GetOptions{})
+			// Accept pod/NAME, pods/NAME, ns/NAME, or bare NAME (like knm trace).
+			podNS, name := parsePodRef(args[0], ns)
+			pod, err := cs.CoreV1().Pods(podNS).Get(ctx, name, metav1.GetOptions{})
 			if err != nil {
 				return fmt.Errorf("get pod: %w", err)
 			}
@@ -55,7 +56,7 @@ func newPolicyCheckCmd(g *GlobalFlags) *cobra.Command {
 				return fmt.Errorf("list networkpolicies: %w", err)
 			}
 			t := &output.Table{
-				Title:   fmt.Sprintf("NetworkPolicies selecting %s/%s", ns, name),
+				Title:   fmt.Sprintf("NetworkPolicies selecting %s/%s", podNS, name),
 				Headers: []string{"POLICY", "TYPES", "INGRESS", "EGRESS", "SELECTS POD"},
 			}
 			podLabels := labels.Set(pod.Labels)
@@ -204,6 +205,28 @@ func splitCSV(s string) []string {
 	return out
 }
 
+// parsePodRef accepts pod/NAME, pods/NAME, ns/NAME, or bare NAME and returns
+// (namespace, name). The default namespace is used when none is specified.
+// This mirrors knm trace's reference parsing so `knm policy check pod/api`
+// works the same way as `knm trace pod/api ...`.
+func parsePodRef(ref, defaultNS string) (string, string) {
+	parts := strings.SplitN(ref, "/", 3)
+	switch len(parts) {
+	case 1:
+		return defaultNS, parts[0]
+	case 2:
+		switch strings.ToLower(parts[0]) {
+		case "pod", "pods":
+			return defaultNS, parts[1]
+		default:
+			return parts[0], parts[1] // ns/name
+		}
+	case 3:
+		return parts[0], parts[2] // ns/pod/name
+	}
+	return defaultNS, ref
+}
+
 func newPolicyMatrixCmd(g *GlobalFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "matrix",
@@ -297,9 +320,8 @@ file by hand or from existing logs.`,
 					b, _ := yaml.Marshal(p)
 					fmt.Fprintln(g.out, string(b))
 				}
-				if ebpfStatus.Reason != "" {
-					output.NYI(&output.Table{}, "live eBPF flow capture; loaded flows from --from-flows ("+ebpfStatus.Reason+")")
-				}
+				fmt.Fprintf(g.out, "# synthesized %d least-privilege NetworkPolicy(ies) from %d observed flows (--from-flows)\n", len(pols), len(flows))
+				fmt.Fprintf(g.out, "# ℹ to capture flows live, enable the eBPF backend (%s)\n", ebpfStatus.String())
 				return nil
 			}
 			return nil

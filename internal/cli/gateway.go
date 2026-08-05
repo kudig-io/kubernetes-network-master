@@ -130,10 +130,22 @@ func newGatewayLintCmd(g *GlobalFlags) *cobra.Command {
 			ns, _ := g.factory.Namespace(allNs)
 			gwList, err := dyn.Resource(gvrGateway).Namespace(ns).List(ctx, metav1.ListOptions{})
 			if err != nil {
+				if isNoMatchError(err) {
+					t := &output.Table{Title: "Gateway API lint", Headers: []string{"STATUS"}}
+					t.Rows = append(t.Rows, output.Row{"STATUS": {Value: "Gateway API CRDs not installed in this cluster"}})
+					output.Note(t, "install with: kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/latest/download/standard-install.yaml")
+					output.Note(t, "or lint a file instead: knm gateway lint -f gateway-api.yaml")
+					return g.render(t)
+				}
 				return fmt.Errorf("list gateways: %w", err)
 			}
 			rtList, err := dyn.Resource(gvrRoute).Namespace(ns).List(ctx, metav1.ListOptions{})
 			if err != nil {
+				if isNoMatchError(err) {
+					t := &output.Table{Title: "Gateway API lint", Headers: []string{"STATUS"}}
+					t.Rows = append(t.Rows, output.Row{"STATUS": {Value: "HTTPRoute CRD not installed in this cluster"}})
+					return g.render(t)
+				}
 				return fmt.Errorf("list httproutes: %w", err)
 			}
 			set := gwint.LintSet{}
@@ -156,11 +168,11 @@ func newGatewayLintCmd(g *GlobalFlags) *cobra.Command {
 
 func newGatewayReplayCmd(g *GlobalFlags) *cobra.Command {
 	var (
-		inFile   string
-		target   string
-		format   string
-		timeout  time.Duration
-		latency  time.Duration
+		inFile  string
+		target  string
+		format  string
+		timeout time.Duration
+		latency time.Duration
 	)
 	cmd := &cobra.Command{
 		Use:   "replay -f access.log --target URL",
@@ -208,12 +220,12 @@ without DNS changes. The report flags status-code diffs and latency regressions.
 			}
 			for _, r := range rep.Results {
 				t.Rows = append(t.Rows, output.Row{
-					"METHOD": {Value: r.Request.Method},
-					"PATH":   {Value: r.Request.Path},
-					"STATUS": {Value: fmt.Sprintf("%d", r.Expected.StatusCode)},
-					"REPLAY": {Value: fmt.Sprintf("%d", r.Replayed.StatusCode)},
+					"METHOD":  {Value: r.Request.Method},
+					"PATH":    {Value: r.Request.Path},
+					"STATUS":  {Value: fmt.Sprintf("%d", r.Expected.StatusCode)},
+					"REPLAY":  {Value: fmt.Sprintf("%d", r.Replayed.StatusCode)},
 					"VERDICT": {Value: r.Status},
-					"DETAIL": {Value: r.Detail},
+					"DETAIL":  {Value: r.Detail},
 				})
 			}
 			output.Note(t, "matched=%d  status-diff=%d  latency-diff=%d  errors=%d  skipped=%d",
@@ -227,6 +239,19 @@ without DNS changes. The report flags status-code diffs and latency regressions.
 	cmd.Flags().DurationVar(&timeout, "timeout", 10*time.Second, "per-request replay timeout")
 	cmd.Flags().DurationVar(&latency, "latency-band", 100*time.Millisecond, "|replayed-expected| above this flags a latency-diff")
 	return cmd
+}
+
+// isNoMatchError reports whether err indicates the CRD for a Gateway API
+// resource is not installed (the dynamic client returns a NoKindMatchError or a
+// 404 StatusError in that case).
+func isNoMatchError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "no matches for kind") ||
+		strings.Contains(msg, "NoKindMatch") ||
+		strings.Contains(msg, "server could not find the requested resource")
 }
 
 func renderFindings(g *GlobalFlags, findings []gwint.Finding) error {

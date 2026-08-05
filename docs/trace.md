@@ -10,24 +10,27 @@ local kind cluster.
 ## The hop chain
 
 ```
-1. Source Pod      Running, Ready, IP assigned
-2. DNS             cluster DNS present AND actively resolves the target name
-3. NetworkPolicy   static src→dst allow/deny verdict (policy engine)
-4. Service         exists, type, ClusterIP, port inference
-5. Endpoints       ready backing pods
-6. TCP Connect     active handshake from source Pod to backend :port
-7. kube-proxy      mode detection (iptables/ipvs/ebpf)
-8. CNI             detected CNI, same-node vs cross-node
-9. Target Pod      IP, node, readiness
+ 1. Source Pod        Running, Ready, IP assigned
+ 2. DNS               cluster DNS present AND actively resolves the target name
+ 3. NetworkPolicy     static src→dst allow/deny verdict (policy engine)
+ 4. Service           exists, type, ClusterIP, port inference
+ 5. Endpoints         ready backing pods
+ 6. TCP Connect       active handshake from source Pod to backend :port
+ 6b. Debug Container  (opt-in) inject ephemeral netshoot container for stripped images
+ 7. kube-proxy        mode detection (iptables/ipvs/nft)
+ 7a. Rules            (opt-in) exec kube-proxy pod, check ClusterIP has a data-plane rule
+ 7b. Path-MTU         (opt-in) df-ping binary search from source Pod to target
+ 8. CNI               detected CNI, same-node vs cross-node
+ 9. Target Pod        IP, node, readiness
 ```
 
 Each hop returns a status: **OK · WARN · FAIL · SKIP**. The first FAIL is
 treated as the break point and printed under the table.
 
-Hops 2 (DNS) and 6 (TCP Connect) are **active probes** — they run a command
-inside the source Pod. Hop 3 (NetworkPolicy) is a static verdict computed by
-the same engine behind `knm policy simulate`, so it needs no exec and always
-runs.
+Hops 2 (DNS), 6 (TCP Connect), 7a (Rules), and 7b (Path-MTU) are **active
+probes** — they run a command inside a Pod. Hop 3 (NetworkPolicy) is a static
+verdict computed by the same engine behind `knm policy simulate`, so it needs
+no exec and always runs. Hops 6b/7a/7b are opt-in (see flags below).
 
 ---
 
@@ -41,6 +44,17 @@ runs.
 | `dns` | ✅ | — | yes | only resolve, skip TCP |
 
 `--no-exec` is a shortcut equivalent to `--probe=api`.
+
+### Opt-in deepening flags
+
+| Flag | Hop | What it adds |
+|---|---|---|
+| `--inspect-rules` | 7a. Rules | exec the **kube-proxy pod on the source node** and grep the ClusterIP in `ipvsadm -Ln` (ipvs), `iptables-save` (iptables), or `nft list ruleset` (nft). FAIL = the node isn't programmed for this Service yet. Needs `pods/exec` on `kube-system`. |
+| `--mtu-probe` | 7b. Path-MTU | binary-search df-ping (`ping -M do -s N`) from the source Pod to the target IP; reports the largest unfragmented payload + implied path MTU. Catches overlay/VPN MTU-mismatch blackholes. |
+| `--debug-container` | 6b. Debug Container | inject an ephemeral `nicolaka/netshoot` container into the source Pod so probes work on stripped/distroless images. Needs the `ephemeralcontainers` RBAC subresource; after injection, re-run `knm trace` to probe via the new container. |
+
+All three default off. Each degrades to SKIP/WARN (never FAIL-crash) when its
+prerequisite is missing.
 
 ---
 
@@ -138,6 +152,15 @@ kubectl delete pod web
 
 # 5. path graph
 ./bin/knm trace pod/debug svc/web -o mermaid
+
+# 6. deep probing: rules + path-MTU (the kube-proxy pod has ipvsadm/iptables)
+./bin/knm trace pod/debug svc/web --inspect-rules --mtu-probe
+# Expect: kube-proxy rules OK (ClusterIP present), Path-MTU = 1500 (kind NAT)
+
+# 7. debug-container injection (for distroless sources)
+kubectl run distroless --image=gcr.io/distroless/static-debian12 -- /nonexistent
+./bin/knm trace pod/distroless svc/web --debug-container
+# Expect: Debug Container OK, then re-run to probe via the netshoot sidecar
 ```
 
 ---

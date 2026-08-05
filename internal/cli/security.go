@@ -136,12 +136,12 @@ func newSecurityDNSCmd(g *GlobalFlags) *cobra.Command {
 					zoneCell = fmt.Sprintf("%s (%.0f)", topZone, topN)
 				}
 				t.Rows = append(t.Rows, output.Row{
-					"POD":         {Value: p.Name},
-					"QUERIES":     {Value: fmt.Sprintf("%.0f", stats.TotalQueries)},
-					"ERRORS":      {Value: fmt.Sprintf("%.0f", stats.Errors)},
-					"CACHE HIT%":  {Value: hitPct},
-					"PANICS":      {Value: fmt.Sprintf("%.0f", stats.Panics)},
-					"TOP ZONE":    {Value: zoneCell},
+					"POD":        {Value: p.Name},
+					"QUERIES":    {Value: fmt.Sprintf("%.0f", stats.TotalQueries)},
+					"ERRORS":     {Value: fmt.Sprintf("%.0f", stats.Errors)},
+					"CACHE HIT%": {Value: hitPct},
+					"PANICS":     {Value: fmt.Sprintf("%.0f", stats.Panics)},
+					"TOP ZONE":   {Value: zoneCell},
 				})
 			}
 			if anyScraped {

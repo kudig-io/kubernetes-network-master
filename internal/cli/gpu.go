@@ -3,12 +3,14 @@ package cli
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/kudig-io/knm-cli/internal/ebpf"
+	gpuint "github.com/kudig-io/knm-cli/internal/gpu"
 	"github.com/kudig-io/knm-cli/internal/output"
 )
 
@@ -107,10 +109,10 @@ today — pipe in ` + "`nccl-test --verbose`" + ` output.`,
 						verdict = "★ worst latency"
 					}
 					t.Rows = append(t.Rows, output.Row{
-						"SIZE":          {Value: l.Size},
+						"SIZE":           {Value: l.Size},
 						"ALGO BW (GB/s)": {Value: fmt.Sprintf("%.3f", l.AlgoBW)},
-						"LAT (us)":      {Value: fmt.Sprintf("%.2f", l.AvgLatency)},
-						"VERDICT":       {Value: verdict},
+						"LAT (us)":       {Value: fmt.Sprintf("%.2f", l.AvgLatency)},
+						"VERDICT":        {Value: verdict},
 					})
 					shown++
 				}

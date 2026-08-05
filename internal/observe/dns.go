@@ -24,15 +24,15 @@ type HTTPGetter interface {
 
 // DNSStats are the CoreDNS metrics we surface.
 type DNSStats struct {
-	Server          string
-	TotalQueries    float64
-	Errors          float64
-	CacheHits       float64
-	CacheMisses     float64
-	PerZoneQueries  map[string]float64
-	Panics          float64
-	Reachable       bool
-	Note            string
+	Server         string
+	TotalQueries   float64
+	Errors         float64
+	CacheHits      float64
+	CacheMisses    float64
+	PerZoneQueries map[string]float64
+	Panics         float64
+	Reachable      bool
+	Note           string
 }
 
 // ScrapeCoreDNS fetches and parses CoreDNS Prometheus metrics from the given
@@ -234,16 +234,16 @@ type EventRow struct {
 
 // networkEventReasons are the Event reasons most relevant to networking.
 var networkEventReasons = map[string]bool{
-	"FailedScheduling":  true,
-	"Unhealthy":         true,
-	"FailedMount":       true,
-	"TrafficPolicy":     true,
-	"BackOff":           true,
-	"NodeNotReady":      true,
+	"FailedScheduling":            true,
+	"Unhealthy":                   true,
+	"FailedMount":                 true,
+	"TrafficPolicy":               true,
+	"BackOff":                     true,
+	"NodeNotReady":                true,
 	"ContainerNetworkUnavailable": true,
-	"NetworkUnavailable": true,
-	"DNSRead":           true,
-	"DNSWrite":          true,
+	"NetworkUnavailable":          true,
+	"DNSRead":                     true,
+	"DNSWrite":                    true,
 }
 
 // FilterNetworkEvents picks network-relevant events from a CoreV1 EventList.
@@ -257,9 +257,9 @@ func FilterNetworkEvents(events []corev1.Event) []EventRow {
 			}
 		}
 		row := EventRow{
-			Type:   e.Type,
-			Reason: e.Reason,
-			Object: e.InvolvedObject.Kind + "/" + e.InvolvedObject.Namespace + "/" + e.InvolvedObject.Name,
+			Type:    e.Type,
+			Reason:  e.Reason,
+			Object:  e.InvolvedObject.Kind + "/" + e.InvolvedObject.Namespace + "/" + e.InvolvedObject.Name,
 			Message: strings.TrimSpace(e.Message),
 		}
 		if !e.LastTimestamp.IsZero() {

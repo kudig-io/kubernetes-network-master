@@ -56,31 +56,31 @@ All commands accept the standard kubectl flags (`--kubeconfig`, `--context`,
 
 | Command | Category | What it does | Status |
 |---|---|---|---|
-| `knm trace SRC DST` | Debug/Observability | Walk DNS→NetworkPolicy→Service→Endpoints→TCP→CNI→Pod, mark the break | ✅ + active probe |
+| `knm trace SRC DST` | Debug/Observability | DNS→NetPol→Service→Endpoints→TCP→rules→MTU→CNI→Pod, mark the break | ✅ + active probe |
 | `knm policy check POD` | Debug/Security | List policies selecting a Pod + isolation state | ✅ |
 | `knm policy simulate` | Security | Pure-static allow/deny verdict (no cluster needed) | ✅ |
 | `knm policy matrix` | Security | Pod×Pod ingress allow matrix | ✅ |
-| `knm policy generate` | Security | default-deny baseline / least-privilege from flows | 🟡 eBPF→fallback |
-| `knm observe flows` / `events` | Observability | eBPF live flows/events (CNI-agnostic) | 🟡 eBPF→fallback |
+| `knm policy generate` | Security | default-deny baseline / least-privilege from flows | ✅ + 🟡 live capture |
+| `knm observe flows` / `events` | Observability | eBPF live flows/events (CNI-agnostic) | 🟡 eBPF→useful fallback |
 | `knm gateway migrate` | Gateway API | Ingress → Gateway + HTTPRoute + diff report | ✅ |
 | `knm gateway lint` | Gateway API | Catch route conflicts, dangling refs, missing TLS | ✅ |
-| `knm gateway replay` | Gateway API | Replay recorded traffic against a new config | 🔲 roadmap |
-| `knm cni bench` | CNI | Detect CNI + standardized benchmark method | ✅ method |
-| `knm cni fault` | CNI | List chaos fault-injection scenarios | ✅ catalog |
-| `knm cni drift` | CNI | Expected-vs-actual node network state baseline | ✅ baseline |
-| `knm security baseline` | Security | Per-Pod behavior baseline + deviation alerts | 🟡 eBPF→fallback |
-| `knm security dns` | Security | CoreDNS stats / DNS anomaly first-pass | 🟡 |
+| `knm gateway replay` | Gateway API | Replay access-log/HAR against a new Gateway, diff | ✅ |
+| `knm cni bench` | CNI | Live iperf3 pod-to-pod throughput/latency | ✅ + 🟡 degrade |
+| `knm cni fault` | CNI | Fault scenarios + runnable inject cmds / chaos-mesh YAML | ✅ |
+| `knm cni drift` | CNI | Snapshot node iptables/route/iface counts for drift | ✅ |
+| `knm security baseline` | Security | Reachability baseline (which Services expose each Pod) | ✅ + 🟡 eBPF |
+| `knm security dns` | Security | Scrape CoreDNS :9153/metrics, query/error/cache stats | ✅ |
 | `knm mc topo` | Multi-cluster | Cross-context service topology | ✅ |
 | `knm mc policy-sync` | Multi-cluster | Dry-run diff a NetworkPolicy across contexts | ✅ |
-| `knm mc connectivity` | Multi-cluster | Hybrid-cloud MTU/route/connectivity self-check | ✅ baseline |
+| `knm mc connectivity` | Multi-cluster | Node baseline + `--active` df-ping MTU probe | ✅ |
 | `knm gpu rdma` | AI/GPU | GPU nodes, Multus/SR-IOV, RDMA readiness | ✅ detect |
-| `knm gpu analyze` | AI/GPU | Locate slow NCCL/AllReduce links | 🟡 eBPF→fallback |
-| `knm gpu qos` | AI/GPU | RDMA-vs-HTTP priority + QoS manager | 🔲 roadmap |
-| `knm sandbox` | DevEx | kind/k3d multi-CNI sandbox + tutorial | ✅ detect |
+| `knm gpu analyze` | AI/GPU | Parse nccl-test log, rank slow AllReduce links | ✅ file + 🟡 eBPF |
+| `knm gpu qos` | AI/GPU | Derive RDMA QoS state from node annotations | ✅ + 🔲 manager |
+| `knm sandbox` | DevEx | kind/k3d cluster create/delete (`--create`/`--delete`) | ✅ |
 | `knm depgraph` | DevEx | Service+EndpointSlice+NetworkPolicy → mermaid/dot | ✅ |
 | `knm version` / `completion` | — | Build info / shell completion | ✅ |
 
-Legend: ✅ implemented (shallow) · 🟡 implemented with eBPF degrade path · 🔲 roadmap
+Legend: ✅ implemented · 🟡 live path + eBPF degrade/roadmap · 🔲 roadmap (see [`docs/commands.md`](docs/commands.md) for per-command depth)
 
 ---
 

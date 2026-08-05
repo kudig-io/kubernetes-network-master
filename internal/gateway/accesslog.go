@@ -100,8 +100,8 @@ func ParseHAR(raw []byte) (reqs []RecordedRequest, resps []RecordedResponse, ski
 		Log struct {
 			Entries []struct {
 				Request struct {
-					Method string            `json:"method"`
-					URL    string            `json:"url"`
+					Method  string `json:"method"`
+					URL     string `json:"url"`
 					Headers []struct {
 						Name  string `json:"name"`
 						Value string `json:"value"`

@@ -34,9 +34,12 @@ unavailable — no `pods/exec` RBAC, a stripped image, or `--probe=api`.
 
 **Done:** ✅ API walk · ✅ DNS resolve · ✅ NetworkPolicy verdict · ✅ TCP connect · ✅ path graphs
 
-**Roadmap (next-round trace deepening):** iptables/ipvs rule inspection via
-node exec, CNI datapath probe, path-MTU/df-ping discovery, ephemeral debug
-container injection (for images with zero probe tools).
+**Done:** ✅ API walk · ✅ DNS resolve · ✅ NetworkPolicy verdict · ✅ TCP connect
+· ✅ iptables/ipvs/nft rule inspection (`--inspect-rules`) · ✅ path-MTU/df-ping
+(`--mtu-probe`) · ✅ ephemeral debug container (`--debug-container`) · ✅ path graphs
+
+**Roadmap:** CNI datapath probe (per-CNI veth/overlay health), route-symmetry
+check, automated re-probe after debug-container injection.
 
 ---
 
@@ -63,12 +66,15 @@ Live eBPF flow capture is the roadmap item (`docs/ebpf.md`).
 
 ---
 
-## 3. `knm observe` — eBPF real-time observation (🟡)
+## 3. `knm observe` — eBPF real-time observation (🟡 degrade paths now useful)
 
 **Pain point:** Cilium Hubble is heavy and Cilium-bound.
 
-`flows` / `events` probe `ebpf.Availability()` and degrade to an API-level
-service map when the backend is unavailable. See `docs/ebpf.md`.
+- `flows` — eBPF path (roadmap) degrades to a real **API-level service map**
+  (Services + ports from the cluster).
+- `events` — eBPF path (roadmap: tcp_retransmit_skb / kfree_skb) degrades to
+  **network-relevant Kubernetes Events** (filtered by reason + keyword:
+  FailedScheduling/Unhealthy/NetworkUnavailable/"connection refused"/...).
 
 ---
 
@@ -88,37 +94,49 @@ hostname conflicts, TLS listeners missing certificateRefs, dangling parentRefs,
 unknown backend Service refs, cross-namespace backend refs needing a
 ReferenceGrant, empty rules.
 
-### `replay` (🔲)
-Traffic recorder + diff engine: record prod, replay in staging, compare status
-code / latency / headers. Methodology only in this release.
+### `replay` (✅)
+Replays recorded traffic against a new Gateway URL and diffs responses. Parses
+nginx/combined access logs (default) or HAR files (`--format har`); rewrites
+each request's path+query onto `--target` (host swapped, headers preserved so
+Host-based routing works); flags status-code diffs and latency regressions
+above `--latency-band`. Pure Go HTTP, fully unit-tested.
 
 ---
 
 ## 5. `knm cni` — CNI testing & comparison
 
-### `bench` (✅ method)
-Detects the installed CNI and prints a standardized benchmark methodology
-(pod-to-pod latency, cross-node throughput, NetworkPolicy apply time, pod
-creation readiness). Automated runner is roadmap.
+### `bench` (✅ live + 🟡 degrade)
+Runs an actual iperf3 pod-to-pod benchmark: creates a server pod + client pod
+(with anti-affinity so they land on different nodes), waits for Ready, runs
+`iperf3 -J`, parses throughput + latency, then cleans up. Falls back to a
+methodology guide if pod creation/image-pull/RBAC fails.
 
-### `fault` (✅ catalog)
+### `fault` (✅ runnable)
 Catalog of CNI fault-injection scenarios (veth severed, IP pool exhaustion, BGP
-down, MTU mismatch, kube-proxy flush) with the injection command for each.
+down, MTU mismatch, kube-proxy flush) with **ready-to-run injection commands**.
+With `-o yaml` emits chaos-mesh `NetworkChaos` manifests for the applicable
+scenarios (loss/partition) — copy/paste to apply.
 
-### `drift` (✅ baseline)
-Collects node podCIDR + pod count as a baseline. Continuous expected-vs-actual
-diff (iptables/route/veth counts) with drift alerts is roadmap.
+### `drift` (✅ snapshot)
+Execs a privileged/debug pod on each node and snapshots iptables rule count,
+route-table size, and interface count. Re-run after a change to spot drift
+(rule-count growth, route leaks). The continuous diff/alert loop is roadmap.
 
 ---
 
 ## 6. `knm security` — network security
 
-### `baseline` (🟡)
-Per-Pod metadata table; eBPF learning + deviation alerts are roadmap.
+### `baseline` (✅ reachability + 🟡 eBPF roadmap)
+Without eBPF: builds a per-Pod **reachability baseline** from EndpointSlices —
+which Services expose each Pod. Pods with no exposing Service are flagged as the
+first candidates to scrutinize for unsanctioned inbound. With eBPF (roadmap):
+live connection learning + deviation alerts (exfil / lateral-move).
 
-### `dns` (🟡)
-Locates CoreDNS pods; metrics scraping (prometheus plugin) + DNS tunnel/entropy
-anomaly detection is roadmap.
+### `dns` (✅ scrape + 🟡 anomaly roadmap)
+Scrapes CoreDNS Prometheus metrics at `:9153/metrics` and reports total queries,
+error count (non-NOERROR rcodes), cache hit %, panics, and the top zone.
+Degrades cleanly when the prometheus plugin/port is unavailable. DNS
+tunnel/entropy anomaly detection is roadmap.
 
 ---
 
@@ -132,9 +150,11 @@ Reads all kubeconfig contexts and builds a cross-cluster service topology
 Dry-run diffs a named NetworkPolicy across all contexts against the current
 context's copy.
 
-### `connectivity` (✅ baseline)
-Collects node IPs/regions/podCIDRs as a connectivity baseline. Active MTU probe
-(df-ping), route symmetry check, and on-prem↔cloud VPC reachability is roadmap.
+### `connectivity` (✅ baseline + ✅ active probe)
+Collects node IPs/regions/podCIDRs. With `--active`, picks a representative pod
+and df-pings each node's internal IP to measure path-MTU — catching
+hybrid-cloud/VPN MTU mismatches. Route-symmetry and on-prem↔cloud VPC
+reachability are roadmap.
 
 ---
 
@@ -144,21 +164,25 @@ Collects node IPs/regions/podCIDRs as a connectivity baseline. Active MTU probe
 Detects GPU nodes (`nvidia.com/gpu` capacity), Multus annotations, SR-IOV
 device-plugin resources, and RDMA interface hints.
 
-### `analyze` (🟡)
-eBPF on RDMA/RoCE NICs + NCCL-test parsing to rank slow AllReduce links.
-Roadmap.
+### `analyze` (✅ file + 🟡 eBPF roadmap)
+Parses an **nccl-test log file** (`-f`) and ranks operations by bandwidth to
+surface the slowest link (the AllReduce bottleneck). The live eBPF path (RDMA
+NIC stats correlated with NCCL rank) is roadmap.
 
-### `qos` (🔲)
-QoS manager that prioritizes RDMA traffic over HTTP/inference via DCN/ECN +
-an admission webhook. Status table only.
+### `qos` (✅ derived + 🔲 manager roadmap)
+Reads each GPU node's annotations/capacity (Multus/SR-IOV/RoCE) and **derives
+the actual QoS posture** — whether RDMA is prioritized (P1) vs best-effort
+(P3), with the detected annotations. An enforcing DCN/ECN admission webhook is
+roadmap.
 
 ---
 
 ## 9. `knm sandbox` & `knm depgraph` — developer experience
 
-### `sandbox` (✅ detect)
-Detects kind/k3d in PATH; one-click multi-CNI cluster bring-up + interactive
-tutorial is roadmap.
+### `sandbox` (✅ lifecycle)
+Detects kind/k3d in PATH; with `--create` brings up a named cluster
+(`kind create cluster --name knm-sandbox` / `k3d cluster create`); `--delete`
+tears it down. Multi-CNI swap + interactive tutorial is roadmap.
 
 ### `depgraph` (✅)
 Derives a dependency graph (Service → backing Pods via EndpointSlice

@@ -119,7 +119,7 @@ Render the hop chain as a path graph with -o dot or -o mermaid.
 			if execNote != "" {
 				output.Note(t, "ℹ %s", execNote)
 			}
-			output.Note(t, "ℹ kube-proxy rule inspection, CNI datapath probe, path-MTU discovery are roadmap items")
+			output.Note(t, "ℹ CNI datapath probe, route-symmetry check, and auto-re-probe after debug-container are roadmap items")
 			return g.render(t)
 		},
 	}

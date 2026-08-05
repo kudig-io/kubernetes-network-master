@@ -189,9 +189,9 @@ func scanFloatAfter(s, key string) (float64, bool) {
 
 // FaultScenario is one injectable CNI failure.
 type FaultScenario struct {
-	Name        string
-	Effect      string
-	Inject      string // kubectl/chaos-mesh command
+	Name         string
+	Effect       string
+	Inject       string                 // kubectl/chaos-mesh command
 	NetworkChaos map[string]interface{} // optional chaos-mesh YAML body
 }
 
@@ -213,7 +213,7 @@ func FaultCatalog(targetNode string) []FaultScenario {
 		},
 		{
 			Name: "BGP session down", Effect: "cross-node routes vanish",
-			Inject: "kubectl exec -n kube-system ds/kube-router -- ip route flush proto bgp  # CNI-specific",
+			Inject:       "kubectl exec -n kube-system ds/kube-router -- ip route flush proto bgp  # CNI-specific",
 			NetworkChaos: chaosMeshDisconnect(node, "BGP"),
 		},
 		{
@@ -222,7 +222,7 @@ func FaultCatalog(targetNode string) []FaultScenario {
 		},
 		{
 			Name: "kube-proxy rule flush", Effect: "ClusterIP routing breaks",
-			Inject: "kubectl exec -n kube-system ds/kube-proxy -- iptables -F  # KUBE-SVC chains",
+			Inject:       "kubectl exec -n kube-system ds/kube-proxy -- iptables -F  # KUBE-SVC chains",
 			NetworkChaos: chaosMeshLoss(node, "kube-proxy", 100),
 		},
 	}
@@ -248,9 +248,9 @@ func chaosMeshDisconnect(node, peer string) map[string]interface{} {
 		"kind":       "NetworkChaos",
 		"metadata":   map[string]interface{}{"name": "knm-disc", "namespace": "default"},
 		"spec": map[string]interface{}{
-			"action":   "partition",
-			"mode":     "all",
-			"selector": map[string]interface{}{"nodes": []string{node}},
+			"action":    "partition",
+			"mode":      "all",
+			"selector":  map[string]interface{}{"nodes": []string{node}},
 			"direction": "to",
 		},
 	}
@@ -278,12 +278,12 @@ func RenderFaultManifests(scenarios []FaultScenario) (string, error) {
 // NodeSnapshot is a network-state snapshot of one node, taken by exec'ing a
 // node debug session or a privileged daemonset pod.
 type NodeSnapshot struct {
-	Node           string
-	IptablesRules  int
-	RouteEntries   int
-	Interfaces     int
-	CollectedAt    time.Time
-	Raw            string // full probe output for debugging
+	Node          string
+	IptablesRules int
+	RouteEntries  int
+	Interfaces    int
+	CollectedAt   time.Time
+	Raw           string // full probe output for debugging
 }
 
 // ProbeNode execs the given command set on a node (via a privileged pod) and
@@ -359,13 +359,20 @@ func iperf3Pod(name, ns, role string) *corev1.Pod {
 	}
 }
 
+// setAntiAffinity uses a *preferred* (soft) anti-affinity so the two benchmark
+// pods land on different nodes when possible, but still schedule on a
+// single-node cluster (the common dev/CI case). The result is labelled
+// same-node vs cross-node accordingly.
 func setAntiAffinity(pods ...*corev1.Pod) {
 	for _, p := range pods {
 		p.Spec.Affinity = &corev1.Affinity{
 			PodAntiAffinity: &corev1.PodAntiAffinity{
-				RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{{
-					LabelSelector: metav1.SetAsLabelSelector(map[string]string{"app": "knm-bench"}),
-					TopologyKey:   "kubernetes.io/hostname",
+				PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{{
+					Weight: 100,
+					PodAffinityTerm: corev1.PodAffinityTerm{
+						LabelSelector: metav1.SetAsLabelSelector(map[string]string{"app": "knm-bench"}),
+						TopologyKey:   "kubernetes.io/hostname",
+					},
 				}},
 			},
 		}

@@ -35,11 +35,11 @@ type RecordedResponse struct {
 
 // ReplayResult is the outcome of replaying one request against the new target.
 type ReplayResult struct {
-	Request   RecordedRequest
-	Replayed  RecordedResponse
-	Expected  RecordedResponse // zero-value when no baseline was recorded
-	Status    string           // match | status-diff | latency-diff | error
-	Detail    string
+	Request  RecordedRequest
+	Replayed RecordedResponse
+	Expected RecordedResponse // zero-value when no baseline was recorded
+	Status   string           // match | status-diff | latency-diff | error
+	Detail   string
 }
 
 // ReplayReport aggregates a batch of replayed requests.
@@ -60,11 +60,11 @@ type HTTPDoer interface {
 
 // ReplayConfig controls the replay engine.
 type ReplayConfig struct {
-	Target       string        // base URL of the new Gateway (e.g. http://gateway.staging:8080)
-	Concurrency  int           // concurrent replays (default 1)
-	Timeout      time.Duration // per-request timeout (default 10s)
-	LatencyBand  time.Duration // |replayed-expected| above this → latency-diff
-	Doer         HTTPDoer
+	Target      string        // base URL of the new Gateway (e.g. http://gateway.staging:8080)
+	Concurrency int           // concurrent replays (default 1)
+	Timeout     time.Duration // per-request timeout (default 10s)
+	LatencyBand time.Duration // |replayed-expected| above this → latency-diff
+	Doer        HTTPDoer
 }
 
 // Replay executes the recorded requests against the new target and returns a

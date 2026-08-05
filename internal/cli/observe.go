@@ -8,6 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/kudig-io/knm-cli/internal/ebpf"
+	"github.com/kudig-io/knm-cli/internal/observe"
 	"github.com/kudig-io/knm-cli/internal/output"
 )
 
@@ -49,23 +50,52 @@ func newObserveFlowsCmd(g *GlobalFlags) *cobra.Command {
 }
 
 func newObserveEventsCmd(g *GlobalFlags) *cobra.Command {
+	var limit int64
 	cmd := &cobra.Command{
 		Use:   "events",
-		Short: "Stream Pod-level network events (loss, retransmit, latency)",
+		Short: "Show network-related Kubernetes events (eBPF loss/retransmit path is roadmap)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			st := ebpf.Availability()
 			t := &output.Table{
 				Title:   "network events",
-				Headers: []string{"TIME", "POD", "EVENT", "DETAIL"},
+				Headers: []string{"LAST SEEN", "TYPE", "REASON", "OBJECT", "MESSAGE"},
 			}
-			if !st.Available {
-				output.Note(t, "%s", ebpf.Degrade("observe events"))
-				output.NYI(t, "eBPF tracepoints (tcp_retransmit_skb, kfree_skb, ...); nothing to stream yet")
+			if st.Available {
+				output.Note(t, "✓ eBPF backend available — wire tcp_retransmit_skb / kfree_skb tracepoints here")
 				return g.render(t)
 			}
+			// Degrade: surface network-relevant Kubernetes Events.
+			output.Note(t, "%s", ebpf.Degrade("observe events"))
+			ctx := context.Background()
+			cs, err := g.factory.Clientset()
+			if err != nil {
+				output.Note(t, "could not connect to cluster for Events fallback: %v", err)
+				return g.render(t)
+			}
+			allNs, _ := cmd.Flags().GetBool("all-namespaces")
+			ns, _ := g.factory.Namespace(allNs)
+			events, err := cs.CoreV1().Events(ns).List(ctx, metav1.ListOptions{
+				Limit: limit,
+			})
+			if err != nil {
+				output.Note(t, "list events failed: %v", err)
+				return g.render(t)
+			}
+			rows := observe.FilterNetworkEvents(events.Items)
+			for _, r := range rows {
+				t.Rows = append(t.Rows, output.Row{
+					"LAST SEEN": {Value: r.LastSeen},
+					"TYPE":      {Value: r.Type},
+					"REASON":    {Value: r.Reason},
+					"OBJECT":    {Value: r.Object},
+					"MESSAGE":   {Value: r.Message},
+				})
+			}
+			output.Note(t, "ℹ showing %d network-relevant K8s Events (%d total); eBPF loss/retransmit is roadmap", len(rows), len(events.Items))
 			return g.render(t)
 		},
 	}
+	cmd.Flags().Int64Var(&limit, "limit", 200, "max events to fetch from the API")
 	return cmd
 }
 
